@@ -35,6 +35,14 @@ const createTable = async (req: Request, res: Response) : Promise<void> => {
         });
 
     } catch (error) {
+        if (error instanceof Error && 'code' in error && (error as any).code === 11000) {
+            res.status(409).json({
+                code: 'DuplicateError',
+                message: `Table with number ${tableNumber} already exists`,
+            });
+            return;
+        }
+
         logger.error('Error while creating Table', error);
         res.status(500).json({
             code: 'ServerError',

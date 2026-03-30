@@ -46,9 +46,9 @@ const updateTable = async (req: Request, res: Response) : Promise<void> => {
             return;
         }
 
-        if(tableNumber) table.tableNumber = tableNumber;
-        if(capacity) table.capacity = capacity;
-        if(status) table.status = status;
+        if(tableNumber !== undefined) table.tableNumber = tableNumber;
+        if(capacity !== undefined) table.capacity = capacity;
+        if(status !== undefined) table.status = status;
 
         await table.save();
 
