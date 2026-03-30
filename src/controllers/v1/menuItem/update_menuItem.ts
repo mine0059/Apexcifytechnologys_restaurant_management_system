@@ -39,9 +39,9 @@ const updateMenuItem = async (req: Request, res : Response) : Promise<void> => {
                 message: 'Access denied, insufficient permissions',
             });
 
-            logger.warn('A user tired to update a Event without permission', {
+            logger.warn('A user tried to update a MenuItem without permission', {
                 userId,
-                event,
+                menuItemId,
             });
 
             return;
@@ -49,7 +49,7 @@ const updateMenuItem = async (req: Request, res : Response) : Promise<void> => {
 
         if (name) menuItem.name = name;
         if (description) menuItem.description = description;
-        if (price) menuItem.price = price;
+        if (price !== undefined) menuItem.price = price;
         if (category) menuItem.category = category;
         if (isAvailable !== undefined) menuItem.isAvailable = isAvailable;
         if (banner) menuItem.banner = banner;
