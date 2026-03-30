@@ -10,10 +10,12 @@ export const validateParams = (schema: z.ZodSchema) => (req: Request, res: Respo
     const result = schema.safeParse(req.params);
 
     if (!result.success) {
+        const flatErrors = result.error.flatten();
         res.status(400).json({
             code: 'ValidationError',
             message: 'Invalid request parameters',
-            errors: result.error.flatten().fieldErrors,
+            errors: flatErrors.fieldErrors,
+            formErrors: flatErrors.formErrors,
         });
         return;
     }
@@ -25,10 +27,12 @@ export const validateQuery = (schema: z.ZodSchema) => (req: Request, res: Respon
     const result = schema.safeParse(req.query);
 
     if (!result.success) {
+        const flatErrors = result.error.flatten();
         res.status(400).json({
             code: 'ValidationError',
             message: 'Invalid query parameters',
-            errors: result.error.flatten().fieldErrors,
+            errors: flatErrors.fieldErrors,
+            formErrors: flatErrors.formErrors,
         });
         return;
     }
@@ -40,10 +44,12 @@ export const validateBody = (schema: z.ZodSchema) => (req: Request, res: Respons
     const result = schema.safeParse(req.body);
 
     if (!result.success) {
+        const flatErrors = result.error.flatten();
         res.status(400).json({
             code: 'ValidationError',
             message: 'Invalid request data',
-            errors: result.error.flatten().fieldErrors,
+            errors: flatErrors.fieldErrors,
+            formErrors: flatErrors.formErrors,
         });
         return;
     }
