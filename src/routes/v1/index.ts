@@ -11,6 +11,7 @@ const router = Router();
 import authRoutes from '@/routes/v1/auth';
 import menuItemRoutes from '@/routes/v1/menuItem';
 import tableRoutes from '@/routes/v1/table';
+import reservationRoutes from '@/routes/v1/reservation';
 
 // Root route   
 router.get('/', (_, res) => {
@@ -26,5 +27,6 @@ router.get('/', (_, res) => {
 router.use('/auth', authRoutes);
 router.use('/menu-items', menuItemRoutes);
 router.use('/tables', tableRoutes);
+router.use('/reservations', reservationRoutes);
 
 export default router;
