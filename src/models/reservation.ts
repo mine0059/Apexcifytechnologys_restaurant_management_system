@@ -28,7 +28,7 @@ const reservationSchema = new Schema<IReservation>({
     },
 });
 
-reservationSchema.index({ table: 1, user: 1 }, { unique: true });
+reservationSchema.index({ table: 1 }, { unique: true });
 
 reservationSchema.index({ user: 1, reservationDate: -1 });
 

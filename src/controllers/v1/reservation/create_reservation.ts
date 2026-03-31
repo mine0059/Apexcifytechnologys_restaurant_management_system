@@ -9,72 +9,82 @@ import Reservation from "@/models/reservation";
 import Table from "@/models/table";
 
 import type { Request, Response } from "express";
-import { Types } from "mongoose";
+import mongoose, { Types } from "mongoose";
 
 const createReservation = async (req: Request, res: Response) : Promise<void> => {
     const tableId = req.params.tableId as string;
-    const userId = req.userId
+    const userId = req.userId;
 
-    if (!Types.ObjectId.isValid(tableId)) {
-        res.status(400).json({
-            code: 'BadRequest',
-            message: 'Invalid table ID format',
-        });
-        return;
-    }
+    const session = await mongoose.startSession();
 
     try {
-        const table = await Table.findById(tableId).select('_id capacity status').lean().exec();
+        session.startTransaction();
 
-        if (!table) {
-            res.status(404).json({
-                code: 'NotFound',
-                message: 'Table not found',
-            });
-            return;
-        }
+        // Atomically claim the table only if it's still available
+        const claimedTable = await Table.findOneAndUpdate(
+            { _id: tableId, status: 'available' }, // condition
+            { $set: { status: 'reserved' } }, // what to change
+            { new: true, session }
+        ).select('_id capacity status').lean().exec();
 
-        if (table.status !== 'available') {
+        // If null, either table doesn't exist OR it's already reserved/occupied
+        if (!claimedTable) {
+            await session.abortTransaction();
+
+            const tableExists = await Table.exists({ _id: tableId }).lean().exec();
+
+            if (!tableExists) {
+                res.status(404).json({
+                    code: 'NotFound',
+                    message: 'Table not found',
+                });
+                return;
+            }
+
             res.status(409).json({
                 code: 'ConflictError',
-                message: `Table is currently ${table.status}`,
+                message: 'Table is not available for reservation',
             });
             return;
         }
 
-        const existingReservation = await Reservation.findOne({
-            table: tableId,
-            user: userId,
-        }).lean().exec();
+        // create the reservation within same session
+        const [reservation] = await Reservation.create(
+            [{
+                table: new Types.ObjectId(tableId),
+                user: userId,
+                reservationDate: new Date(),
+            }],
+            { session }
+        );
 
-        if (existingReservation) {
-            res.status(400).json({
-                code: 'BadRequest',
-                message: 'You have already reserved this table',
-            });
-            return;
-        }
+        await session.commitTransaction();
 
-        const reservation = await Reservation.create({
-            table: new Types.ObjectId(tableId),
-            user: userId,
-            reservationDate: new Date(),
-        });
-
-        await Table.findByIdAndUpdate(tableId, { status: 'reserved' }).exec();
-
-        logger.info(`Table reserved successfully: ${reservation}`);
+        logger.info(`Table reserved successfully: ${reservation._id}`);
 
         res.status(201).json({
             reservation,
         });
 
-    } catch (error) {
+    } catch (error: any) {
+        await session.abortTransaction();
+        
+        // Catch duplicate key error (shouldn't happen due to findOneAndUpdate, but defensive)
+        if (error.code === 11000) {
+            res.status(409).json({
+                code: 'ConflictError',
+                message: 'Table is already reserved',
+            });
+            return;
+        }
+
         logger.error('Error during Table Reservation', error);
         res.status(500).json({
             code: 'ServerError',
             message: 'Internal server error',
         });
+    } finally {
+        await session.endSession();
     }
 };
 

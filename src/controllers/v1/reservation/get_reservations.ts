@@ -11,6 +11,14 @@ import type { Request, Response } from "express";
 
 const getReservations = async (req: Request, res: Response) : Promise<void> => {
     const userId = req.userId;
+    if (!userId) {
+        res.status(401).json({
+            code: 'AuthenticationError',
+            message: 'Authentication required',
+        });
+        
+        return;
+    }
 
     try {
         const reservations = await Reservation.find({ user: userId })

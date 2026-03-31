@@ -6,14 +6,15 @@
 import { logger } from "@/lib/winston";
 
 import Reservation from "@/models/reservation";
-import User from "@/models/user";
 import Table from "@/models/table";
 
 import type { Request, Response } from "express";
+import mongoose from "mongoose";
 
 const deleteReservation = async (req: Request, res: Response) : Promise<void> => {
     const { id } = req.params;
     const userId = req.userId;
+    const userRole = req.userRole;
 
     try {
         const reservation = await Reservation.findById(id).select('user table').lean().exec();
@@ -26,37 +27,39 @@ const deleteReservation = async (req: Request, res: Response) : Promise<void> =>
             return;
         }
 
-        const user = await User.findById(userId).select('role').lean().exec();
+        const isOwner = reservation.user?.toString() === userId?.toString();
 
-        if (!user) {
-            res.status(404).json({
-                code: 'NotFound',
-                message: 'User not found',
-            });
-            return;
-        }
-
-        if (reservation.user !== userId && user.role !== 'admin') {
-            res.status(403).json({
-                code: 'AuthorizationError',
-                message: 'Access denied, insufficient permissions',
-            });
-
+        if (!isOwner && userRole !== 'admin') {
             logger.warn('A user tried to delete a Reservation without permission', {
                 userId,
             });
 
+            res.status(403).json({
+                code: 'AuthorizationError',
+                message: 'Access denied, insufficient permissions',
+            });
             return;
         }
 
-        await Reservation.deleteOne({ _id: id });
+        const session = await mongoose.startSession();
 
-        await Table.findByIdAndUpdate(reservation.table, { status: 'available' }).exec();
+        try {
+            await session.withTransaction(async () => {
+                await Reservation.deleteOne({  _id: id }).session(session);
 
-        logger.info(`Reservation deleted successfully: ${id}`);
+                await Table.findByIdAndUpdate(
+                    reservation.table, 
+                    { $set: { status: 'available' } }
+                ).session(session).exec();
+            });
 
-        res.sendStatus(204);
-    } catch (error) {
+            logger.info(`Reservation deleted successfully: ${id}`);
+            res.sendStatus(204);
+
+        } finally {
+            await session.endSession();
+        }
+    }  catch (error) {
         logger.error('Error while deleting reservation', error);
         res.status(500).json({
             code: 'ServerError',
