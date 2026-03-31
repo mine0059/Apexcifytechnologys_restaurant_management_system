@@ -34,6 +34,8 @@ const authorize = (roles: AuthRole[]) => {
                 return;
             }
 
+            req.userRole = user.role;
+
             return next();
         } catch (error) {
             res.status(500).json({
