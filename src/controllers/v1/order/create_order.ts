@@ -12,6 +12,7 @@ import MenuItem from "@/models/menuItem";
 import type { Request, Response } from "express";
 import type { createOrderSchema } from "@/validations/order";
 import type { z } from "zod";
+import mongoose from "mongoose";
 
 type CreateOrderBody = z.infer<typeof createOrderSchema>;
 
@@ -33,7 +34,9 @@ const createOrder = async (req: Request, res: Response) : Promise<void> => {
         if (table.status !== 'reserved') {
             res.status(409).json({
                 code: 'ConflictError',
-                message: 'Orders can only be placed for reserved tables',
+                message: table.status === 'occupied'
+                    ? 'This table already has an active order'
+                    : 'Orders can only be placed for reserved tables',
             });
             return;
         }
@@ -86,20 +89,56 @@ const createOrder = async (req: Request, res: Response) : Promise<void> => {
             };
         });
 
-        const order = await Order.create({
-            user: userId,
-            table: tableId,
-            items: orderItems,
-            totalAmount,
-        });
+        const session = await mongoose.startSession();
 
-        logger.info(`Order created successfully: ${order._id}`);
+        try {
+            let order: InstanceType<typeof Order> | null = null;
 
-        res.status(201).json({
-            order,
-        });
+            await session.withTransaction(async () => {
+                const claimedTable = await Table.findOneAndUpdate(
+                    { _id: tableId, status: 'reserved' },
+                    { $set: { status: 'occupied' } },
+                    { session }
+                ).lean().exec();
 
-    } catch (error) {
+                // Another request may have changed the status between our check and now
+                if (!claimedTable) {
+                    const error = new Error('TABLE_NO_LONGER_RESERVED');
+                    throw error;
+                }
+
+                const [createdOrder] = await Order.create(
+                    [{
+                        user: userId,
+                        table: tableId,
+                        items: orderItems,
+                        totalAmount,
+                    }],
+                    { session }
+                );
+
+                order = createdOrder;
+            });
+
+            logger.info(`Order created successfully: ${order!._id}, table ${tableId} marked occupied`);
+
+            res.status(201).json({
+                order,
+            });
+        } finally {
+            await session.endSession();
+        }
+
+    } catch (error: any) {
+        // Handle the race condition where table status changed mid-request
+        if (error.message === 'TABLE_NO_LONGER_RESERVED') {
+            res.status(409).json({
+                code: 'ConflictError',
+                message: 'Table is no longer available for ordering',
+            });
+            return;
+        }
+        
         logger.error('Error creating order', error);
         res.status(500).json({
             code: 'ServerError',

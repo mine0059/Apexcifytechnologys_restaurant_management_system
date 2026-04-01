@@ -43,7 +43,7 @@ const getAllOrders = async (req: Request, res: Response): Promise<void> => {
 
         const totalPages = Math.ceil(totalCount / limit);
         const currentPage = Math.floor(offset / limit) + 1;
-        const hasNextPage = offset + limit < totalPages;
+        const hasNextPage = offset + limit < totalCount;
         const hasPrevPage = offset > 0;
 
         res.status(200).json({

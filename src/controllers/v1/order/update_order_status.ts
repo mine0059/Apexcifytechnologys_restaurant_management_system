@@ -6,10 +6,13 @@
 import { logger } from "@/lib/winston";
 
 import Order from "@/models/order";
+import Table from "@/models/table";
 
 import type { Request, Response } from "express";
 import type { updateOrderStatusSchema } from "@/validations/order";
 import type { z } from "zod";
+import { IOrder } from "@/models/order";
+import mongoose, { Types } from "mongoose";
 
 type UpdateOrderStatusBody = z.infer<typeof updateOrderStatusSchema>;
 
@@ -21,6 +24,8 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
     cancelled:  [],
 };
 
+const TERMINAL_STATUSES = new Set(['completed', 'cancelled']);
+
 const updateOrderStatus = async (req: Request, res: Response): Promise<void> => {
     const { orderId } = req.params;
     const { status: newStatus } = req.body as UpdateOrderStatusBody;
@@ -28,7 +33,7 @@ const updateOrderStatus = async (req: Request, res: Response): Promise<void> => 
 
     try {
         const order = await Order.findById(orderId)
-            .select('status user')
+            .select('status user table')
             .lean()
             .exec();
 
@@ -41,7 +46,6 @@ const updateOrderStatus = async (req: Request, res: Response): Promise<void> => 
         }
 
         const currentStatus = order.status;
-
         const allowedTransitions = VALID_TRANSITIONS[currentStatus];
 
         if (!allowedTransitions.includes(newStatus)) {
@@ -79,6 +83,48 @@ const updateOrderStatus = async (req: Request, res: Response): Promise<void> => 
             }
         }
 
+        if (TERMINAL_STATUSES.has(newStatus)) {
+            const session = await mongoose.startSession();
+
+            try {
+                type LeanOrder = IOrder & { _id: Types.ObjectId; __v?: number };
+                let updatedOrder: LeanOrder | null = null;
+
+                await session.withTransaction(async () => {
+                    const [updated] = await Promise.all([
+                        Order.findByIdAndUpdate(
+                            orderId,
+                            { $set: { status: newStatus } },
+                            { new: true, select: 'status totalAmount createdAt updatedAt', session }
+                        ).lean().exec(),
+
+                        Table.findByIdAndUpdate(
+                            order.table,
+                            { $set: { status: 'available' } },
+                            { session }
+                        ).lean().exec(),
+                    ]);
+
+                    updatedOrder = updated;
+                });
+
+                logger.info(
+                    `Order ${orderId} status updated from '${currentStatus}' to '${newStatus}', table ${order.table} released`,
+                    { updatedBy: req.userId, role: userRole }
+                );
+
+                res.status(200).json({
+                    order: updatedOrder,
+                });
+
+            } finally {
+                await session.endSession();
+            }
+
+            return;
+        }
+
+        // Non-terminal status update — no table change needed, no transaction needed
         const updatedOrder = await Order.findByIdAndUpdate(
             orderId,
             { $set: { status: newStatus } },
