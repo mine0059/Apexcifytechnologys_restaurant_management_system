@@ -12,6 +12,7 @@ import authRoutes from '@/routes/v1/auth';
 import menuItemRoutes from '@/routes/v1/menuItem';
 import tableRoutes from '@/routes/v1/table';
 import reservationRoutes from '@/routes/v1/reservation';
+import orderRoutes from '@/routes/v1/order';
 
 // Root route   
 router.get('/', (_, res) => {
@@ -28,5 +29,6 @@ router.use('/auth', authRoutes);
 router.use('/menu-items', menuItemRoutes);
 router.use('/tables', tableRoutes);
 router.use('/reservations', reservationRoutes);
+router.use('/orders', orderRoutes);
 
 export default router;
