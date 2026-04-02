@@ -7,6 +7,7 @@ import { logger } from "@/lib/winston";
 
 import Order from "@/models/order";
 import Table from "@/models/table";
+import { restoreInventory } from "@/lib/inventory";
 
 import type { Request, Response } from "express";
 import type { updateOrderStatusSchema } from "@/validations/order";
@@ -33,7 +34,7 @@ const updateOrderStatus = async (req: Request, res: Response): Promise<void> => 
 
     try {
         const order = await Order.findById(orderId)
-            .select('status user table')
+            .select('status user table items')
             .lean()
             .exec();
 
@@ -106,6 +107,10 @@ const updateOrderStatus = async (req: Request, res: Response): Promise<void> => 
                     ]);
 
                     updatedOrder = updated;
+
+                    if (newStatus === 'cancelled') {
+                        await restoreInventory(order.items, session);
+                    }
                 });
 
                 logger.info(

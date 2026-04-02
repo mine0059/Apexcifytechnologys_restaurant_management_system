@@ -8,6 +8,7 @@ import { logger } from "@/lib/winston";
 import Order from "@/models/order";
 import Table from "@/models/table";
 import MenuItem from "@/models/menuItem";
+import { deductInventory } from "@/lib/inventory";
 
 import type { Request, Response } from "express";
 import type { createOrderSchema } from "@/validations/order";
@@ -118,9 +119,13 @@ const createOrder = async (req: Request, res: Response) : Promise<void> => {
                 );
 
                 order = createdOrder;
+
+                await deductInventory(orderItems, session);
             });
 
-            logger.info(`Order created successfully: ${order!._id}, table ${tableId} marked occupied`);
+            logger.info(
+                `Order created: ${order!._id}, table ${tableId} occupied, inventory deducted`
+            );
 
             res.status(201).json({
                 order,
